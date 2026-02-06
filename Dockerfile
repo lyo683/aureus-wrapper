@@ -1,10 +1,15 @@
+# syntax=docker/dockerfile:1.7
 FROM webkul/aureuserp:latest
 
 WORKDIR /home/aureuserp/aureuserp
 
-# Laravel 11+ : Reverse proxy(HTTPS) 뒤에서 X-Forwarded-* 신뢰하도록 설정
-RUN cp bootstrap/app.php bootstrap/app.php.bak || true
-RUN bash -lc 'cat > bootstrap/app.php <<'\''PHP'\''
+RUN <<'EOF'
+set -e
+
+# 1) trustProxies를 bootstrap/app.php에 고정
+cp bootstrap/app.php bootstrap/app.php.bak 2>/dev/null || true
+
+cat > bootstrap/app.php <<'PHP'
 <?php
 
 use Illuminate\Foundation\Application;
@@ -31,15 +36,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();
-PHP'
+PHP
 
-# favicon/logo는 절대경로(http)로 나오는 문제를 없애기 위해 상대경로로 고정
-RUN perl -pi -e "s/->favicon\\(asset\\('images\\/favicon\\.ico'\\)\\)/->favicon('\\/images\\/favicon.ico')/g" \
+# 2) favicon/logo는 상대경로로 고정 (Mixed Content 제거)
+perl -pi -e "s/->favicon\(asset\('images\/favicon\.ico'\)\)/->favicon('\/images\/favicon.ico')/g" \
   app/Providers/Filament/AdminPanelProvider.php \
   app/Providers/Filament/CustomerPanelProvider.php || true
 
-RUN perl -pi -e "s/asset\\('images\\/logo-light\\.svg'\\)/'\\/images\\/logo-light.svg'/g; s/asset\\('images\\/logo-dark\\.svg'\\)/'\\/images\\/logo-dark.svg'/g" \
+perl -pi -e "s/asset\('images\/logo-light\.svg'\)/'\/images\/logo-light.svg'/g; s/asset\('images\/logo-dark\.svg'\)/'\/images\/logo-dark.svg'/g" \
   app/Providers/Filament/AdminPanelProvider.php \
   app/Providers/Filament/CustomerPanelProvider.php || true
 
-RUN php artisan optimize:clear || true
+# 3) 캐시 클리어
+php artisan optimize:clear >/dev/null 2>&1 || true
+EOF
